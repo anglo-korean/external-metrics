@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,8 +15,28 @@ import (
 )
 
 const (
-	urlPrefix = "/apis/external.metrics.k8s.io/v1beta1/namespaces"
+	urlPrefix = "/apis/external.metrics.k8s.io/v1beta1/namespaces/"
+
+	NamespaceAll     = "*"
+	NamespaceDefault = "default"
 )
+
+// Notification is sent to 'notify' a metric to refresh
+type Notification struct{}
+
+// Tick essentially wraps time.Tick, but sends a Notification instead of
+// a time.Time
+func Tick(d time.Duration) <-chan Notification {
+	c := make(chan Notification)
+
+	go func(c chan Notification) {
+		for _ = range time.Tick(d) {
+			c <- Notification{}
+		}
+	}(c)
+
+	return c
+}
 
 // MetricFunc is a function which is run on events to update the latest value
 // of a metric
@@ -51,11 +72,11 @@ func (s *Server) createNamespaceIfNotExist(ns string) {
 //
 // `c` could be anything from a time.Tick, to something listening out for external
 // events
-func (s *Server) AddMetric(ctx context.Context, namespace, name string, c chan any, f MetricFunc) {
+func (s *Server) AddMetric(ctx context.Context, namespace, name string, c <-chan Notification, f MetricFunc) {
 	s.createNamespaceIfNotExist(namespace)
 	s.metrics[namespace][name] = 0
 
-	go s.runMetric(ctx, namespace, name, f)
+	go s.runMetricLoop(ctx, namespace, name, c, f)
 }
 
 // Serve serves metrics over http on the
@@ -65,7 +86,7 @@ func (s Server) Serve(addr string) (err error) {
 	return http.ListenAndServe(addr, nil)
 }
 
-func (s *Server) runMetricLoop(ctx context.Context, namespace, name string, c chan any, f MetricFunc) {
+func (s *Server) runMetricLoop(ctx context.Context, namespace, name string, c <-chan Notification, f MetricFunc) {
 	for {
 		select {
 		case <-c:
@@ -92,7 +113,7 @@ func (s Server) handle(w http.ResponseWriter, req *http.Request) {
 		err    error
 	)
 
-	urlParts := strings.Split(strings.Replace(req.URL.Path, "/", "", -1), "/")
+	urlParts := strings.Split(strings.Replace(req.URL.Path, urlPrefix, "", -1), "/")
 
 	switch len(urlParts) {
 	case 0:
@@ -130,7 +151,7 @@ func (s Server) getMetric(namespace, name string) (l k8s.ExternalMetricValueList
 	}
 
 	if _, ok = s.metrics[namespace][name]; !ok {
-		return k8s.ExternalMetricValueList{}, fmt.Errorf("Mwtric %s either does not exist under namespace %s", name, namespace)
+		return k8s.ExternalMetricValueList{}, fmt.Errorf("Metric %s either does not exist under namespace %s", name, namespace)
 	}
 
 	value := s.metrics[namespace][name]
