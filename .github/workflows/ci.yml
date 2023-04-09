@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '*'
+
+env:
+  GO_PRIVATE: "github.com/anglo-korean/*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      run: |
+        git config --global url."https://YOUR_GITHUB_USERNAME:${TOKEN}@github.com".insteadOf "https://github.com"
+
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+        token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+    - uses: actions/setup-go@v2
+      with:
+        go-version: '>=1.20.0'
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./...
+
+    - name: Build and push containers
+      run: |
+        set -axe
+
+        echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
+        make docker-build docker-push
+      env:
+        DOCKER_BUILDKIT: 1
+
+  dev:
+    needs: build
+    runs-on: development-cluster
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+        token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+    - name: Deploy
+      run: |
+        make deploy
+      env:
+        ENVIRONMENT: development
+
+  staging:
+    needs: dev
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags')
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+        token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+    - name: Deploy
+      run: |
+        echo skipped
+      env:
+        ENVIRONMENT: staging
+
+  production:
+    needs: staging
+    runs-on: self-hosted
+    if: contains(github.ref, 'refs/tags')
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+        token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+    - name: Deploy
+      run: |
+        make deploy
+      env:
+        ENVIRONMENT: production
