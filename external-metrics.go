@@ -222,18 +222,33 @@ func (s Server) getMetric(namespace, name, label, value string) (l k8s.ExternalM
 		return k8s.ExternalMetricValueList{}, fmt.Errorf("Metric %s either does not exist under namespace %s", name, namespace)
 	}
 
+	var metricsLabels map[string]string
+	if label != "" && value != "" {
+		metricsLabels = map[string]string{
+			label: value,
+		}
+	}
+
 	v := s.metrics[namespace][name]
 
 	return k8s.ExternalMetricValueList{
-
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ExternalMetricValueList",
+			APIVersion: "external.metrics.k8s.io/v1beta1",
+		},
+		ListMeta: metav1.ListMeta{
+			ResourceVersion: fmt.Sprintf("%d", time.Now().Unix()),
+		},
 		Items: []k8s.ExternalMetricValue{
 			{
-				MetricName: name,
-				MetricLabels: map[string]string{
-					label: value,
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ExternalMetricValue",
+					APIVersion: "external.metrics.k8s.io/v1beta1",
 				},
-				Timestamp: metav1.Now(),
-				Value:     *v.quantity(label, value),
+				MetricName:   name,
+				MetricLabels: metricsLabels,
+				Timestamp:    metav1.Now(),
+				Value:        *v.quantity(label, value),
 			},
 		},
 	}, nil
