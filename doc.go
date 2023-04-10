@@ -3,7 +3,7 @@
 //
 // Why?
 //
-// The officialy supported method (https://github.com/kubernetes-sigs/custom-metrics-apiserver) is just f-ing inscruitable.
+// The officially supported method (https://github.com/kubernetes-sigs/custom-metrics-apiserver) is just f-ing inscruitable.
 //
 // Not only that, but the documentation for what these servers need to do are awful. The best bet is a design doc on an old branch of some random kubernetes repo. The second bet is a medium article where someone describes how they discovered what one of these APIs needs to do, but not what that is.
 //
