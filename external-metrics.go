@@ -27,7 +27,7 @@ func Tick(d time.Duration) <-chan context.Context {
 	c := make(chan context.Context)
 
 	go func(c chan context.Context) {
-		for _ = range time.Tick(d) {
+		for range time.Tick(d) {
 			ctx, _ := context.WithTimeout(context.Background(), d/2)
 
 			c <- ctx
